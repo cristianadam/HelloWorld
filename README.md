@@ -1,2 +1,2 @@
 # HelloWorld
-A C++ Hello World project, using CMake, and GitHub Actions 
+A C++ Hello World project, using CMake, ninja, ccache, and GitHub Actions.
