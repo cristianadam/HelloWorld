@@ -6,7 +6,7 @@ env:
   CMAKE_VERSION: 3.21.1
   NINJA_VERSION: 1.10.2
   BUILD_TYPE: Release
-  CCACHE_VERSION: 4.2.1
+  CCACHE_VERSION: 4.4
 
 jobs:
   build:
@@ -190,6 +190,13 @@ jobs:
           message("::error::${error_message}")
           message(FATAL_ERROR "Build failed")
         endif()
+
+    - name: ccache statistics
+      shell: cmake -P {0}
+      run: |
+        file(TO_CMAKE_PATH "$ENV{GITHUB_WORKSPACE}" ccache_basedir)
+        set(ENV{CCACHE_BASEDIR} "${ccache_basedir}")
+        set(ENV{CCACHE_DIR} "${ccache_basedir}/.ccache")
 
         execute_process(COMMAND ccache -s)
 
