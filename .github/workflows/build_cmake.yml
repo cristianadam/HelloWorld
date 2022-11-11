@@ -6,7 +6,7 @@ env:
   CMAKE_VERSION: 3.24.3
   NINJA_VERSION: 1.11.1
   BUILD_TYPE: Release
-  CCACHE_VERSION: 4.6
+  CCACHE_VERSION: 4.7.3
 
 jobs:
   build:
