@@ -3,43 +3,54 @@ name: CMake Build Matrix
 on: [push, pull_request]
 
 env:
-  CMAKE_VERSION: 3.24.3
-  NINJA_VERSION: 1.11.1
+  CMAKE_VERSION: "3.29.6"
+  NINJA_VERSION: "1.12.1"
   BUILD_TYPE: Release
-  CCACHE_VERSION: 4.9
+  CCACHE_VERSION: "4.10"
 
 jobs:
   build:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
+    outputs:
+        tag: ${{ steps.git.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
         config:
         - {
-            name: "Windows Latest MSVC", artifact: "Windows-MSVC.7z",
+            name: "Windows Latest MSVC", artifact: "Windows-MSVC",
             os: windows-latest,
             cc: "cl", cxx: "cl",
             environment_script: "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/VC/Auxiliary/Build/vcvars64.bat"
           }
         - {
-            name: "Windows Latest MinGW", artifact: "Windows-MinGW.7z",
+            name: "Windows Latest MinGW", artifact: "Windows-MinGW",
             os: windows-latest,
             cc: "gcc", cxx: "g++"
           }
         - {
-            name: "Ubuntu Latest GCC", artifact: "Linux.7z",
+            name: "Ubuntu Latest GCC", artifact: "Linux",
             os: ubuntu-latest,
             cc: "gcc", cxx: "g++"
           }
         - {
-            name: "macOS Latest Clang", artifact: "macOS.7z",
+            name: "macOS Latest Clang", artifact: "macOS",
             os: macos-latest,
             cc: "clang", cxx: "clang++"
           }
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+    - name: Checkout submodules
+      id: git
+      shell: cmake -P {0}
+      run: |
+        if (${{github.ref}} MATCHES "tags/v(.*)")
+            file(APPEND "$ENV{GITHUB_OUTPUT}" "tag=${CMAKE_MATCH_1}\n")
+        else()
+            file(APPEND "$ENV{GITHUB_OUTPUT}" "tag=${{github.run_id}}\n")
+        endif()
 
     - name: Download Ninja and CMake
       shell: cmake -P {0}
@@ -125,7 +136,7 @@ jobs:
         file(APPEND "$ENV{GITHUB_OUTPUT}" "timestamp=${current_date}")
 
     - name: ccache cache files
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: .ccache
         key: ${{ matrix.config.name }}-ccache-${{ steps.ccache_cache_timestamp.outputs.timestamp }}
@@ -249,17 +260,16 @@ jobs:
     - name: Install Strip
       run: cmake --install build --prefix instdir --strip
 
-
     - name: Pack
       working-directory: instdir
-      run: cmake -E tar cfv ../${{ matrix.config.artifact }} --format=7zip .
-
+      run: cmake -E tar cfv ../${{ matrix.config.artifact }}-${{ steps.git.outputs.tag }}.7z --format=7zip .
 
     - name: Upload
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        path: ./${{ matrix.config.artifact }}
-        name: ${{ matrix.config.artifact }}
+        path: ./${{ matrix.config.artifact }}-${{ steps.git.outputs.tag }}.7z
+        name: ${{ matrix.config.artifact }}-${{ steps.git.outputs.tag }}.7z
+
 
   release:
     if: contains(github.ref, 'tags/v')
@@ -267,76 +277,18 @@ jobs:
     needs: build
 
     steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release
+
     - name: Create Release
       id: create_release
-      uses: actions/create-release@v1
+      uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: v${{ needs.build.outputs.tag }}
+        files: release/*
         draft: false
         prerelease: false
-
-    - name: Store Release url
-      run: |
-        echo "${{ steps.create_release.outputs.upload_url }}" > ./upload_url
-
-    - uses: actions/upload-artifact@v3
-      with:
-        path: ./upload_url
-        name: upload_url
-
-  publish:
-    if: contains(github.ref, 'tags/v')
-    name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-        - {
-            name: "Windows Latest MSVC", artifact: "Windows-MSVC.7z",
-            os: ubuntu-latest
-          }
-        - {
-            name: "Windows Latest MinGW", artifact: "Windows-MinGW.7z",
-            os: ubuntu-latest
-          }
-        - {
-            name: "Ubuntu Latest GCC", artifact: "Linux.7z",
-            os: ubuntu-latest
-          }
-        - {
-            name: "macOS Latest Clang", artifact: "macOS.7z",
-            os: ubuntu-latest
-          }
-    needs: release
-
-    steps:
-    - name: Download artifact
-      uses: actions/download-artifact@v3
-      with:
-        name: ${{ matrix.config.artifact }}
-        path: ./
-
-    - name: Download URL
-      uses: actions/download-artifact@v3
-      with:
-        name: upload_url
-        path: ./
-    - id: set_upload_url
-      run: |
-        upload_url=`cat ./upload_url`
-        echo upload_url=$upload_url >> $GITHUB_OUTPUT
-
-    - name: Upload to Release
-      id: upload_to_release
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.set_upload_url.outputs.upload_url }}
-        asset_path: ./${{ matrix.config.artifact }}
-        asset_name: ${{ matrix.config.artifact }}
-        asset_content_type: application/x-gtar
