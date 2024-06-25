@@ -280,7 +280,12 @@ jobs:
     - name: Download artifacts
       uses: actions/download-artifact@v4
       with:
-        path: release
+        path: release-with-dirs
+
+    - name: Fixup artifacts
+      run: |
+        mkdir release
+        mv release-with-dirs/*/* release/
 
     - name: Create Release
       id: create_release
